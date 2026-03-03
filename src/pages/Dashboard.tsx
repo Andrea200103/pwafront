@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import InviteModal from "../components/InviteModal";
+import CollaboratorProfile from "../components/CollaboratorProfile";
 import { api, setAuth } from "../api";
 import {
   cacheTasks,
@@ -56,8 +59,23 @@ export default function Dashboard() {
   const [editingTitle, setEditingTitle] = useState("");
   const [editingDescription, setEditingDescription] = useState("");
   const [online, setOnline] = useState<boolean>(navigator.onLine);
+  const { projectId } = useParams();
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [project, setProject] = useState<any>(null);
+  const [showInvite, setShowInvite] = useState(false);
+  const [profileUser, setProfileUser] = useState<any>(null);        
 
   useEffect(() => {
+    if (projectId) {
+  api.get(`/projects/${projectId}`).then(({ data }) => {
+    setProject(data.project);
+    if (searchParams.get("newMember")) {
+      const me = data.project.members.at(-1);
+      if (me) setProfileUser(me);
+    }
+  });
+}
     setAuth(localStorage.getItem("token"));
 
     // Suscripción que dispara sync al volver online (definida en offline/sync)
@@ -93,11 +111,12 @@ export default function Dashboard() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
-  }, []);
+   }, [projectId]);
 
   async function loadFromServer() {
     try {
-      const { data } = await api.get("/tasks"); // { items: [...] }
+      const url = projectId ? `/tasks?project=${projectId}` : "/tasks";
+      const { data } = await api.get(url);
       const raw = Array.isArray(data?.items) ? data.items : [];
       const list = raw.map(normalizeTask);
       setTasks(list);
@@ -144,7 +163,11 @@ export default function Dashboard() {
 
     // Online directo
     try {
-      const { data } = await api.post("/tasks", { title: t, description: d });
+      const { data } = await api.post("/tasks", {
+  title: t,
+  description: d,
+  project: projectId || undefined,
+});
       const created = normalizeTask(data?.task ?? data);
       setTasks((prev) => prev.map((x) => (x._id === clienteId ? created : x)));
       await putTaskLocal(created);
@@ -284,7 +307,23 @@ export default function Dashboard() {
   return (
     <div className="wrap">
       <header className="topbar">
-        <h1>To-Do PWA</h1>
+        <h1>
+  {project ? (
+    <>
+      <span
+        className="muted"
+        style={{ cursor: "pointer", fontSize: 14 }}
+        onClick={() => nav("/projects")}
+      >
+        ← Proyectos
+      </span>
+      {" / "}
+      {project.name}
+    </>
+  ) : (
+    "To-Do PWA"
+  )}
+</h1>
         <div className="spacer" />
         <div className="stats">
           <span>Total: {stats.total}</span>
@@ -294,6 +333,26 @@ export default function Dashboard() {
             {online ? "Online" : "Offline"}
           </span>
         </div>
+        {project && (
+  <>
+    <div className="members-row">
+      {project.members?.map((m: any) => (
+        <span
+          key={m._id}
+          className="avatar-chip"
+          title={m.name}
+          style={{ cursor: "pointer" }}
+          onClick={() => setProfileUser(m)}
+        >
+          {m.name.slice(0, 2).toUpperCase()}
+        </span>
+      ))}
+    </div>
+    <button className="btn" onClick={() => setShowInvite(true)}>
+      + Invitar
+    </button>
+  </>
+)}
         <button className="btn danger" onClick={logout}>Salir</button>
       </header>
 
@@ -420,6 +479,12 @@ export default function Dashboard() {
           </ul>
         )}
       </main>
+      {showInvite && project && (
+  <InviteModal project={project} onClose={() => setShowInvite(false)} />
+)}
+{profileUser && (
+  <CollaboratorProfile user={profileUser} onClose={() => setProfileUser(null)} />
+)}
     </div>
   );
 }
