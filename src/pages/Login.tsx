@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api, setAuth } from "../api";
 import logo from '../assets/logo.png';
 
 export default function Login() {
-    const nav = useNavigate();
+    
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [show, setShow] = useState(false);
