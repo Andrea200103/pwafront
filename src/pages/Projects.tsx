@@ -75,12 +75,12 @@ export default function Projects() {
             <span>📁</span>
             <div>
               <strong>{p.name}</strong>
-              <p className="muted">{p.members.length} miembro(s)</p>
+              <p className="muted">{p.members?.length ?? 0} miembro(s)</p>
             </div>
             <div className="members-row">
-              {p.members.slice(0, 4).map((m) => (
+              {(p.members ?? []).slice(0, 4).map((m) => (
                 <span key={m._id} className="avatar-chip" title={m.name}>
-                  {m.name.slice(0, 2).toUpperCase()}
+                  {m.name?.slice(0, 2).toUpperCase()}
                 </span>
               ))}
             </div>
