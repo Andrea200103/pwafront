@@ -20,7 +20,13 @@ export default function Login() {
             localStorage.setItem("token", data.token);
             setAuth(data.token);
             console.log("Login OK, redirigiendo...");
-            window.location.href = "/projects";
+           const pending = localStorage.getItem("pendingInvite");
+if (pending) {
+  localStorage.removeItem("pendingInvite");
+  window.location.href = `/invite/${pending}`;
+} else {
+  window.location.href = "/projects";
+}
         } catch (err: any) {
             setError(err.response?.data?.message || "Error al iniciar sesión");
         } finally {

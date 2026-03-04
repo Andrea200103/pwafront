@@ -20,11 +20,11 @@ export default function InviteAccept() {
   }, [token]);
 
   async function handleAccept() {
-    if (!isLoggedIn) {
-      localStorage.setItem("pendingInvite", token!);
-      nav(`/?redirect=/invite/${token}`);
-      return;
-    }
+   if (!isLoggedIn) {
+  localStorage.setItem("pendingInvite", token!);
+  window.location.href = "/";  // <- cambia nav() por window.location.href
+  return;
+}
     setLoading(true);
     try {
       const { data } = await api.post(`/invitations/${token}/accept`);
