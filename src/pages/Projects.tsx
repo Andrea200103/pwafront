@@ -36,6 +36,17 @@ export default function Projects() {
     }
   }
 
+  async function handleDelete(e: React.MouseEvent, projectId: string) {
+    e.stopPropagation();
+    if (!confirm("¿Eliminar este proyecto?")) return;
+    try {
+      await api.delete(`/projects/${projectId}`);
+      setProjects((p) => p.filter((proj) => proj._id !== projectId));
+    } catch (err: any) {
+      alert(err.response?.data?.message || "Error al eliminar");
+    }
+  }
+
   function logout() {
     localStorage.removeItem("token");
     window.location.href = "/";
@@ -84,6 +95,13 @@ export default function Projects() {
                 </span>
               ))}
             </div>
+            <button
+              className="btn danger"
+              onClick={(e) => handleDelete(e, p._id)}
+              style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }}
+            >
+              🗑️
+            </button>
           </div>
         ))}
 
