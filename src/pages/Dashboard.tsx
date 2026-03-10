@@ -81,6 +81,9 @@ export default function Dashboard() {
   const currentUserId = getCurrentUserId();
   // ¿Es dueño del proyecto?
   const isOwner = project?.owner?._id === currentUserId;
+  console.log("owner:", project?.owner?._id);
+console.log("currentUserId:", currentUserId);
+console.log("isOwner:", isOwner);
 
   useEffect(() => {
     if (projectId) {
