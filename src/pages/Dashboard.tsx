@@ -24,10 +24,21 @@ type Task = {
   createdAt?: string;
   deleted?: boolean;
   pending?: boolean;
-  assignedTo?: { _id: string; name: string; email: string } | null; // <- nuevo
+  assignedTo?: { _id: string; name: string; email: string } | null;
 };
 
 const isLocalId = (id: string) => !/^[a-f0-9]{24}$/i.test(id);
+
+// Obtener id del usuario logueado desde el token
+function getCurrentUserId(): string {
+  try {
+    const token = localStorage.getItem("token");
+    const payload = token ? JSON.parse(atob(token.split(".")[1])) : null;
+    return payload?.id ?? "";
+  } catch {
+    return "";
+  }
+}
 
 function normalizeTask(x: any): Task {
   return {
@@ -44,7 +55,7 @@ function normalizeTask(x: any): Task {
     createdAt: x?.createdAt,
     deleted: !!x?.deleted,
     pending: !!x?.pending,
-    assignedTo: x?.assignedTo ?? null, // <- nuevo
+    assignedTo: x?.assignedTo ?? null,
   };
 }
 
@@ -66,12 +77,20 @@ export default function Dashboard() {
   const [showInvite, setShowInvite] = useState(false);
   const [profileUser, setProfileUser] = useState<any>(null);
 
+  // ID del usuario logueado
+  const currentUserId = getCurrentUserId();
+  // ¿Es dueño del proyecto?
+  const isOwner = project?.owner?._id === currentUserId;
+
   useEffect(() => {
     if (projectId) {
       api.get(`/projects/${projectId}`).then(({ data }) => {
         setProject(data.project);
         if (searchParams.get("newMember")) {
-          const me = data.project.members.at(-1);
+          // Buscar el miembro que coincide con el usuario logueado
+          const me = data.project.members.find(
+            (m: any) => m._id === getCurrentUserId()
+          );
           if (me) setProfileUser(me);
         }
       });
@@ -171,7 +190,6 @@ export default function Dashboard() {
     }
   }
 
-  // <- función nueva para asignar tarea
   async function assignTask(taskId: string, memberId: string) {
     try {
       await api.put(`/tasks/${taskId}`, { assignedTo: memberId || null });
@@ -423,8 +441,8 @@ export default function Dashboard() {
                       <span className="title" onDoubleClick={() => startEdit(t)}>{t.title}</span>
                       {t.description && <p className="desc">{t.description}</p>}
 
-                      {/* <- dropdown de asignación */}
-                      {project && !isLocalId(t._id) && (
+                      {/* Solo el dueño puede asignar tareas */}
+                      {project && !isLocalId(t._id) && isOwner && (
                         <select
                           className="status-select"
                           value={t.assignedTo?._id ?? ""}
@@ -439,6 +457,13 @@ export default function Dashboard() {
                             </option>
                           ))}
                         </select>
+                      )}
+
+                      {/* Colaborador solo ve a quién está asignada */}
+                      {project && !isLocalId(t._id) && !isOwner && t.assignedTo && (
+                        <span style={{ fontSize: 12, color: "#888", marginTop: 4, display: "block" }}>
+                          👤 {t.assignedTo.name}
+                        </span>
                       )}
 
                       {(t.pending || isLocalId(t._id)) && (
