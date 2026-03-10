@@ -20,11 +20,11 @@ export default function InviteAccept() {
   }, [token]);
 
   async function handleAccept() {
-   if (!isLoggedIn) {
-  localStorage.setItem("pendingInvite", token!);
-  window.location.href = "/";  // <- cambia nav() por window.location.href
-  return;
-}
+    if (!isLoggedIn) {
+      localStorage.setItem("pendingInvite", token!);
+      window.location.href = "/";
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await api.post(`/invitations/${token}/accept`);
@@ -34,6 +34,11 @@ export default function InviteAccept() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleRegister() {
+    localStorage.setItem("pendingInvite", token!);
+    window.location.href = "/register";
   }
 
   if (error)
@@ -65,17 +70,53 @@ export default function InviteAccept() {
           <strong>{invitation.project.name}</strong>
           <p className="muted">Invitado por {invitation.invitedBy.name}</p>
         </div>
+
         {!isLoggedIn && (
-          <p className="muted">Necesitas iniciar sesión para aceptar.</p>
+          <div style={{
+            background: "#1a1a2e",
+            border: "1px solid #2a2a3a",
+            borderRadius: 10,
+            padding: "16px 18px",
+            marginTop: 16,
+            marginBottom: 8,
+          }}>
+            <p style={{ margin: "0 0 6px", color: "#f0eeff", fontWeight: 600 }}>
+              ¿Ya tienes cuenta?
+            </p>
+            <p style={{ margin: "0 0 14px", color: "#888", fontSize: 13 }}>
+              Inicia sesión para aceptar la invitación.
+            </p>
+            <button className="btn primary" onClick={handleAccept} disabled={loading} style={{ width: "100%", marginBottom: 10 }}>
+              Iniciar sesión →
+            </button>
+
+            <hr style={{ border: "none", borderTop: "1px solid #2a2a3a", margin: "12px 0" }} />
+
+            <p style={{ margin: "0 0 6px", color: "#f0eeff", fontWeight: 600 }}>
+              ¿No tienes cuenta?
+            </p>
+            <p style={{ margin: "0 0 14px", color: "#888", fontSize: 13 }}>
+              Regístrate con el correo al que llegó la invitación:<br />
+              <strong style={{ color: "#1f6feb" }}>{invitation.email}</strong>
+            </p>
+            <button
+              className="btn"
+              onClick={handleRegister}
+              style={{ width: "100%", background: "#2a2a3a", color: "#f0eeff" }}
+            >
+              Crear cuenta →
+            </button>
+          </div>
         )}
-        {error && <p className="alert">{error}</p>}
-        <button className="btn primary" onClick={handleAccept} disabled={loading}>
-          {loading
-            ? "Procesando…"
-            : isLoggedIn
-            ? "Aceptar y colaborar →"
-            : "Iniciar sesión para aceptar"}
-        </button>
+
+        {isLoggedIn && (
+          <>
+            {error && <p className="alert">{error}</p>}
+            <button className="btn primary" onClick={handleAccept} disabled={loading} style={{ width: "100%", marginTop: 16 }}>
+              {loading ? "Procesando…" : "Aceptar y colaborar →"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
