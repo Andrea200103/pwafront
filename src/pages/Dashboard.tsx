@@ -16,20 +16,19 @@ import { syncNow, setupOnlineSync } from "../offline/sync";
 type Status = "Pendiente" | "En Progreso" | "Completada";
 
 type Task = {
-  _id: string;                 // serverId o clienteId (offline)
+  _id: string;
   title: string;
   description?: string;
   status: Status;
   clienteId?: string;
   createdAt?: string;
   deleted?: boolean;
-  pending?: boolean;           // <- muestra “Falta sincronizar”
+  pending?: boolean;
+  assignedTo?: { _id: string; name: string; email: string } | null; // <- nuevo
 };
 
-// id local (no 24 hex de Mongo)
 const isLocalId = (id: string) => !/^[a-f0-9]{24}$/i.test(id);
 
-// Normaliza lo que venga del backend
 function normalizeTask(x: any): Task {
   return {
     _id: String(x?._id ?? x?.id),
@@ -45,6 +44,7 @@ function normalizeTask(x: any): Task {
     createdAt: x?.createdAt,
     deleted: !!x?.deleted,
     pending: !!x?.pending,
+    assignedTo: x?.assignedTo ?? null, // <- nuevo
   };
 }
 
@@ -64,24 +64,22 @@ export default function Dashboard() {
   const [searchParams] = useSearchParams();
   const [project, setProject] = useState<any>(null);
   const [showInvite, setShowInvite] = useState(false);
-  const [profileUser, setProfileUser] = useState<any>(null);        
+  const [profileUser, setProfileUser] = useState<any>(null);
 
   useEffect(() => {
     if (projectId) {
-  api.get(`/projects/${projectId}`).then(({ data }) => {
-    setProject(data.project);
-    if (searchParams.get("newMember")) {
-      const me = data.project.members.at(-1);
-      if (me) setProfileUser(me);
+      api.get(`/projects/${projectId}`).then(({ data }) => {
+        setProject(data.project);
+        if (searchParams.get("newMember")) {
+          const me = data.project.members.at(-1);
+          if (me) setProfileUser(me);
+        }
+      });
     }
-  });
-}
     setAuth(localStorage.getItem("token"));
 
-    // Suscripción que dispara sync al volver online (definida en offline/sync)
     const unsubscribe = setupOnlineSync();
 
-    // Handlers de estado (sin recargar)
     const on = async () => {
       setOnline(true);
       await syncNow();
@@ -92,17 +90,10 @@ export default function Dashboard() {
     window.addEventListener("offline", off);
 
     (async () => {
-      // 1) Mostrar cache local primero
       const local = await getAllTasksLocal();
       if (local?.length) setTasks(local.map(normalizeTask));
-
-      // 2) Intentar traer del server
       await loadFromServer();
-
-      // 3) Intentar sincronizar pendientes
       await syncNow();
-
-      // 4) Re-cargar del server por si hubo mapeos nuevos
       await loadFromServer();
     })();
 
@@ -111,7 +102,7 @@ export default function Dashboard() {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
-   }, [projectId]);
+  }, [projectId]);
 
   async function loadFromServer() {
     try {
@@ -122,7 +113,6 @@ export default function Dashboard() {
       setTasks(list);
       await cacheTasks(list);
     } catch {
-      // si falla, nos quedamos con lo local
     } finally {
       setLoading(false);
     }
@@ -134,14 +124,13 @@ export default function Dashboard() {
     const d = description.trim();
     if (!t) return;
 
-    // Crear local inmediatamente
     const clienteId = crypto.randomUUID();
     const localTask = normalizeTask({
       _id: clienteId,
       title: t,
       description: d,
       status: "Pendiente" as Status,
-      pending: !navigator.onLine, // <- marca “Falta sincronizar” si no hay red
+      pending: !navigator.onLine,
     });
 
     setTasks((prev) => [localTask, ...prev]);
@@ -161,18 +150,16 @@ export default function Dashboard() {
       return;
     }
 
-    // Online directo
     try {
       const { data } = await api.post("/tasks", {
-  title: t,
-  description: d,
-  project: projectId || undefined,
-});
+        title: t,
+        description: d,
+        project: projectId || undefined,
+      });
       const created = normalizeTask(data?.task ?? data);
       setTasks((prev) => prev.map((x) => (x._id === clienteId ? created : x)));
       await putTaskLocal(created);
     } catch {
-      // si falla, encola
       const op: OutboxOp = {
         id: "op-" + clienteId,
         op: "create",
@@ -184,6 +171,27 @@ export default function Dashboard() {
     }
   }
 
+  // <- función nueva para asignar tarea
+  async function assignTask(taskId: string, memberId: string) {
+    try {
+      await api.put(`/tasks/${taskId}`, { assignedTo: memberId || null });
+      setTasks((prev) =>
+        prev.map((t) =>
+          t._id === taskId
+            ? {
+                ...t,
+                assignedTo: memberId
+                  ? project?.members.find((m: any) => m._id === memberId) ?? null
+                  : null,
+              }
+            : t
+        )
+      );
+    } catch {
+      alert("Error al asignar tarea");
+    }
+  }
+
   function startEdit(task: Task) {
     setEditingId(task._id);
     setEditingTitle(task.title);
@@ -192,7 +200,7 @@ export default function Dashboard() {
 
   async function saveEdit(taskId: string) {
     const newTitle = editingTitle.trim();
-    const newDesc  = editingDescription.trim();
+    const newDesc = editingDescription.trim();
     if (!newTitle) return;
 
     const before = tasks.find((t) => t._id === taskId);
@@ -270,7 +278,6 @@ export default function Dashboard() {
     try {
       await api.delete(`/tasks/${taskId}`);
     } catch {
-      // rollback + encola
       setTasks(backup);
       for (const t of backup) await putTaskLocal(t);
       await queue({ id: "del-" + taskId, op: "delete", serverId: taskId, clienteId: isLocalId(taskId) ? taskId : undefined, ts: Date.now() });
@@ -280,7 +287,7 @@ export default function Dashboard() {
   function logout() {
     localStorage.removeItem("token");
     setAuth(null);
-    window.location.href = "/"; // login
+    window.location.href = "/";
   }
 
   const filtered = useMemo(() => {
@@ -308,22 +315,22 @@ export default function Dashboard() {
     <div className="wrap">
       <header className="topbar">
         <h1>
-  {project ? (
-    <>
-      <span
-        className="muted"
-        style={{ cursor: "pointer", fontSize: 14 }}
-        onClick={() => nav("/projects")}
-      >
-        ← Proyectos
-      </span>
-      {" / "}
-      {project.name}
-    </>
-  ) : (
-    "To-Do PWA"
-  )}
-</h1>
+          {project ? (
+            <>
+              <span
+                className="muted"
+                style={{ cursor: "pointer", fontSize: 14 }}
+                onClick={() => nav("/projects")}
+              >
+                ← Proyectos
+              </span>
+              {" / "}
+              {project.name}
+            </>
+          ) : (
+            "To-Do PWA"
+          )}
+        </h1>
         <div className="spacer" />
         <div className="stats">
           <span>Total: {stats.total}</span>
@@ -334,30 +341,29 @@ export default function Dashboard() {
           </span>
         </div>
         {project && (
-  <>
-    <div className="members-row">
-      {project.members?.map((m: any) => (
-        <span
-          key={m._id}
-          className="avatar-chip"
-          title={m.name}
-          style={{ cursor: "pointer" }}
-          onClick={() => setProfileUser(m)}
-        >
-          {m.name.slice(0, 2).toUpperCase()}
-        </span>
-      ))}
-    </div>
-    <button className="btn" onClick={() => setShowInvite(true)}>
-      + Invitar
-    </button>
-  </>
-)}
+          <>
+            <div className="members-row">
+              {project.members?.map((m: any) => (
+                <span
+                  key={m._id}
+                  className="avatar-chip"
+                  title={m.name}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setProfileUser(m)}
+                >
+                  {m.name.slice(0, 2).toUpperCase()}
+                </span>
+              ))}
+            </div>
+            <button className="btn" onClick={() => setShowInvite(true)}>
+              + Invitar
+            </button>
+          </>
+        )}
         <button className="btn danger" onClick={logout}>Salir</button>
       </header>
 
       <main>
-        {/* ===== Crear ===== */}
         <form className="add add-grid" onSubmit={addTask}>
           <input
             value={title}
@@ -373,7 +379,6 @@ export default function Dashboard() {
           <button className="btn">Agregar</button>
         </form>
 
-        {/* ===== Toolbar ===== */}
         <div className="toolbar">
           <input
             className="search"
@@ -382,31 +387,12 @@ export default function Dashboard() {
             onChange={(e) => setSearch(e.target.value)}
           />
           <div className="filters">
-            <button
-              className={filter === "all" ? "chip active" : "chip"}
-              onClick={() => setFilter("all")}
-              type="button"
-            >
-              Todas
-            </button>
-            <button
-              className={filter === "active" ? "chip active" : "chip"}
-              onClick={() => setFilter("active")}
-              type="button"
-            >
-              Activas
-            </button>
-            <button
-              className={filter === "completed" ? "chip active" : "chip"}
-              onClick={() => setFilter("completed")}
-              type="button"
-            >
-              Hechas
-            </button>
+            <button className={filter === "all" ? "chip active" : "chip"} onClick={() => setFilter("all")} type="button">Todas</button>
+            <button className={filter === "active" ? "chip active" : "chip"} onClick={() => setFilter("active")} type="button">Activas</button>
+            <button className={filter === "completed" ? "chip active" : "chip"} onClick={() => setFilter("completed")} type="button">Hechas</button>
           </div>
         </div>
 
-        {/* ===== Lista ===== */}
         {loading ? (
           <p>Cargando…</p>
         ) : filtered.length === 0 ? (
@@ -415,7 +401,6 @@ export default function Dashboard() {
           <ul className="list">
             {filtered.map((t) => (
               <li key={t._id} className={t.status === "Completada" ? "item done" : "item"}>
-                {/* Select de estado */}
                 <select
                   value={t.status}
                   onChange={(e) => handleStatusChange(t, e.target.value as Status)}
@@ -430,33 +415,34 @@ export default function Dashboard() {
                 <div className="content">
                   {editingId === t._id ? (
                     <>
-                      <input
-                        className="edit"
-                        value={editingTitle}
-                        onChange={(e) => setEditingTitle(e.target.value)}
-                        placeholder="Título"
-                        autoFocus
-                      />
-                      <textarea
-                        className="edit"
-                        value={editingDescription}
-                        onChange={(e) => setEditingDescription(e.target.value)}
-                        placeholder="Descripción"
-                        rows={2}
-                      />
+                      <input className="edit" value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} placeholder="Título" autoFocus />
+                      <textarea className="edit" value={editingDescription} onChange={(e) => setEditingDescription(e.target.value)} placeholder="Descripción" rows={2} />
                     </>
                   ) : (
                     <>
-                      <span className="title" onDoubleClick={() => startEdit(t)}>
-                        {t.title}
-                      </span>
+                      <span className="title" onDoubleClick={() => startEdit(t)}>{t.title}</span>
                       {t.description && <p className="desc">{t.description}</p>}
-                      {(t.pending || isLocalId(t._id)) && (
-                        <span
-                          className="badge"
-                          title="Aún no sincronizada"
-                          style={{ background: "#b45309", width: "fit-content" }}
+
+                      {/* <- dropdown de asignación */}
+                      {project && !isLocalId(t._id) && (
+                        <select
+                          className="status-select"
+                          value={t.assignedTo?._id ?? ""}
+                          onChange={(e) => assignTask(t._id, e.target.value)}
+                          style={{ marginTop: 6, fontSize: 12 }}
+                          title="Asignar a"
                         >
+                          <option value="">👤 Sin asignar</option>
+                          {project.members?.map((m: any) => (
+                            <option key={m._id} value={m._id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {(t.pending || isLocalId(t._id)) && (
+                        <span className="badge" title="Aún no sincronizada" style={{ background: "#b45309", width: "fit-content" }}>
                           Falta sincronizar
                         </span>
                       )}
@@ -470,21 +456,20 @@ export default function Dashboard() {
                   ) : (
                     <button className="icon" title="Editar" onClick={() => startEdit(t)}>✏️</button>
                   )}
-                  <button className="icon danger" title="Eliminar" onClick={() => removeTask(t._id)}>
-                    🗑️
-                  </button>
+                  <button className="icon danger" title="Eliminar" onClick={() => removeTask(t._id)}>🗑️</button>
                 </div>
               </li>
             ))}
           </ul>
         )}
       </main>
+
       {showInvite && project && (
-  <InviteModal project={project} onClose={() => setShowInvite(false)} />
-)}
-{profileUser && (
-  <CollaboratorProfile user={profileUser} onClose={() => setProfileUser(null)} />
-)}
+        <InviteModal project={project} onClose={() => setShowInvite(false)} />
+      )}
+      {profileUser && (
+        <CollaboratorProfile user={profileUser} onClose={() => setProfileUser(null)} />
+      )}
     </div>
   );
 }
