@@ -29,7 +29,6 @@ type Task = {
 
 const isLocalId = (id: string) => !/^[a-f0-9]{24}$/i.test(id);
 
-// Obtener id del usuario logueado desde el token
 function getCurrentUserId(): string {
   try {
     const token = localStorage.getItem("token");
@@ -77,20 +76,14 @@ export default function Dashboard() {
   const [showInvite, setShowInvite] = useState(false);
   const [profileUser, setProfileUser] = useState<any>(null);
 
-  // ID del usuario logueado
   const currentUserId = getCurrentUserId();
-  // ¿Es dueño del proyecto?
   const isOwner = project?.owner?._id === currentUserId;
-  console.log("owner:", project?.owner?._id);
-console.log("currentUserId:", currentUserId);
-console.log("isOwner:", isOwner);
 
   useEffect(() => {
     if (projectId) {
       api.get(`/projects/${projectId}`).then(({ data }) => {
         setProject(data.project);
         if (searchParams.get("newMember")) {
-          // Buscar el miembro que coincide con el usuario logueado
           const me = data.project.members.find(
             (m: any) => m._id === getCurrentUserId()
           );
@@ -353,6 +346,11 @@ console.log("isOwner:", isOwner);
           )}
         </h1>
         <div className="spacer" />
+        {!project && (
+          <button className="btn" onClick={() => nav("/projects")} style={{ marginRight: 8 }}>
+            📁 Proyectos
+          </button>
+        )}
         <div className="stats">
           <span>Total: {stats.total}</span>
           <span>Hechas: {stats.done}</span>
@@ -444,7 +442,6 @@ console.log("isOwner:", isOwner);
                       <span className="title" onDoubleClick={() => startEdit(t)}>{t.title}</span>
                       {t.description && <p className="desc">{t.description}</p>}
 
-                      {/* Solo el dueño puede asignar tareas */}
                       {project && !isLocalId(t._id) && isOwner && (
                         <select
                           className="status-select"
@@ -462,7 +459,6 @@ console.log("isOwner:", isOwner);
                         </select>
                       )}
 
-                      {/* Colaborador solo ve a quién está asignada */}
                       {project && !isLocalId(t._id) && !isOwner && t.assignedTo && (
                         <span style={{ fontSize: 12, color: "#888", marginTop: 4, display: "block" }}>
                           👤 {t.assignedTo.name}
